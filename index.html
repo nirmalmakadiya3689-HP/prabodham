@@ -123,40 +123,52 @@ setInterval(()=>{const n=new Date(),hm=String(n.getHours()).padStart(2,'0')+':'+
 const askN=()=>window.Notification?Notification.requestPermission().then(render):alert('Notifications unsupported here');
 const saveP=()=>{S.cfg.user=$('#un').value.trim().toLowerCase().replace(/[^a-z0-9]/g,'');S.cfg.email=$('#em').value.trim();S.cfg.kt=$('#kt').value;S.cfg.ht=$('#ht').value;save();startPeer();render()};
 const profileCard=()=>`<div class="card"><b>Profile & alerts</b>
- <input id="un" placeholder="Username (for chat & calls)" value="${esc(S.cfg.user||'')}">
+ <input id="un" readonly placeholder="Codename (set at sign-up)" value="${esc(S.cfg.user||'')}">
  <input id="em" type="email" placeholder="Your email" value="${esc(S.cfg.email||'')}">
  <label class="mut">Katha reminder<input id="kt" type="time" value="${S.cfg.kt||'06:00'}"></label>
  <label class="mut">Habit reminder<input id="ht" type="time" value="${S.cfg.ht||'21:00'}"></label>
  <div class="row"><button onclick="saveP()">Save</button><button class="g" onclick="askN()">Enable notifications</button></div>
  <div class="mut" style="margin-top:6px">Notifications: ${window.Notification?Notification.permission:'unsupported'} (they fire while the app is open). Chat: ${esc(net)}</div></div>`;
-/* CHAT & CALLS (PeerJS, peer-to-peer) */
-let peer=null,conns={},net='Chat offline',curCall=null,chatWith=null;
-function startPeer(){const n=S.cfg.user;if(!n)return;
- const run=()=>{if(peer)peer.destroy();net='Connecting…';peer=new Peer('regain-'+n);
-  peer.on('open',()=>{net='Online as '+n;if(tab=='chat'||tab=='set')render()});
-  peer.on('connection',setup);peer.on('call',onCall);
-  peer.on('error',e=>{net=e.type=='unavailable-id'?'Username taken – pick another':'Chat error: '+e.type;render()})};
- if(window.Peer)run();else{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js';sc.onload=run;sc.onerror=()=>{net='Chat needs internet'};document.head.appendChild(sc)}}
-function setup(c){const w=c.peer.slice(7);conns[w]=c;
- c.on('open',()=>{if(!S.contacts.includes(w)){S.contacts.push(w);save()}render()});
- c.on('data',d=>{addMsg(w,false,String(d));notify('💬 '+w,String(d));render()});
- c.on('close',()=>{delete conns[w];render()})}
-const addMsg=(w,me,t)=>{(S.chats[w]=S.chats[w]||[]).push({me,t,ts:Date.now()});save()};
-function openChat(w){chatWith=w;if(peer&&!(conns[w]&&conns[w].open))setup(peer.connect('regain-'+w,{reliable:true}));render()}
-const addC=()=>{const n=$('#fn').value.trim().toLowerCase().replace(/[^a-z0-9]/g,'');if(!n)return;if(!S.contacts.includes(n)){S.contacts.push(n);save()}openChat(n)};
-const sendM=()=>{const i=$('#mi'),t=i.value.trim();if(!t)return;const c=conns[chatWith];if(!c||!c.open)return alert('Not connected. They must be online with Regain open.');c.send(t);addMsg(chatWith,true,t);render();$('#mi').focus()};
-views.chat=()=>{if(!S.cfg.user)return '<div class="card">Choose a username in <b>Setup</b> to chat and call.</div>';
- const op=w=>conns[w]&&conns[w].open;
- let h=`<div class="card"><div class="mut">${esc(net)}</div><div class="row"><input id="fn" placeholder="Friend’s username"><button onclick="addC()">Add</button></div></div>`;
- if(!chatWith)return h+S.contacts.map(w=>`<div class="card row" onclick="openChat('${w}')"><b>${esc(w)}</b><span class="pill" style="flex:none">${op(w)?'online':'tap to connect'}</span></div>`).join('');
+/* COMMS (Firebase: registered agents, offline delivery, WebRTC calls) */
+const FBCFG={apiKey:'AIzaSyDk992aVyAlIvGCjJC_Dt0yULqF94jUCSA',authDomain:'prabodham-514509.firebaseapp.com',projectId:'prabodham-514509',storageBucket:'prabodham-514509.firebasestorage.app',messagingSenderId:'1100350122',appId:'1:1100350122:web:ddfa9768937903a3ca86d3'}; // paste Firebase web config here
+const ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'}]};
+let peer=null,net='Comms offline',chatWith=null,db=null,me=null,unsubs=[],UID={},pc=null,cid=null,cuns=[],lstream=null;
+async function fbInit(){if(db||!FBCFG.projectId||!tok)return;if(!window.firebase){const B='https://www.gstatic.com/firebasejs/10.12.2/firebase-';await loadScript(B+'app-compat.js');await loadScript(B+'auth-compat.js');await loadScript(B+'firestore-compat.js')}
+ if(!firebase.apps.length)firebase.initializeApp(FBCFG);const c=await firebase.auth().signInWithCredential(firebase.auth.GoogleAuthProvider.credential(null,tok));me=c.user.uid;db=firebase.firestore()}
+async function startPeer(){if(!tok||!S.cfg.user)return;if(!FBCFG.projectId){net='Comms server not set up';return}
+ try{net='Connecting…';render();unsubs.forEach(f=>f());unsubs=[];await fbInit();
+  const r=db.collection('usernames').doc(S.cfg.user),d=await r.get();if(!d.exists)await r.set({uid:me,name:S.profile.name||''});else if(d.data().uid!=me){S.cfg.user='';save();onboard();return}
+  const er=e=>{net='Comms error: '+e.message;render()};
+  unsubs.push(db.collection('msgs').where('to','==',me).onSnapshot(sn=>{sn.docChanges().forEach(ch=>{if(ch.type!='added')return;const m=ch.doc.data(),w=m.fromName;if(!S.contacts.includes(w))S.contacts.push(w);UID[w]=m.from;addMsg(w,false,m.t);notify('💬 '+w,m.t);ch.doc.ref.delete()});render()},er));
+  unsubs.push(db.collection('calls').where('to','==',me).where('state','==','ringing').onSnapshot(sn=>sn.docChanges().forEach(ch=>{if(ch.type=='added')incoming(ch.doc)}),er));
+  peer={destroy(){unsubs.forEach(f=>f());unsubs=[];db=null}};net='Online as '+S.cfg.user}catch(e){net='Comms error: '+e.message}render()}
+async function uidOf(n){if(UID[n])return UID[n];const d=await db.collection('usernames').doc(n).get();if(!d.exists)throw new Error('No registered agent with that codename');return UID[n]=d.data().uid}
+const addMsg=(w,me2,t)=>{(S.chats[w]=S.chats[w]||[]).push({me:me2,t,ts:Date.now()});save()};
+const openChat=w=>{chatWith=w;render()};
+async function addC(){const n=$('#fn').value.trim().toLowerCase().replace(/[^a-z0-9]/g,'');if(!n||!db)return;if(n==S.cfg.user)return alert('That is you');try{await uidOf(n);if(!S.contacts.includes(n)){S.contacts.push(n);save()}openChat(n)}catch(e){alert(e.message)}}
+async function sendM(){const i=$('#mi'),t=i.value.trim().slice(0,1000);if(!t||!db)return;try{await db.collection('msgs').add({from:me,fromName:S.cfg.user,to:await uidOf(chatWith),t,ts:Date.now()});addMsg(chatWith,true,t);render();$('#mi').focus()}catch(e){alert('Not sent: '+e.message)}}
+views.chat=()=>{if(!S.cfg.user)return '<div class="card">Sign in with Google and create your codename first.</div>';if(!FBCFG.projectId)return '<div class="card">Comms server is not set up yet.</div>';
+ let h=`<div class="card"><div class="mut">${esc(net)}</div><div class="row"><input id="fn" placeholder="Registered agent codename"><button onclick="addC()">Add</button></div></div>`;
+ if(!chatWith)return h+S.contacts.map(w=>`<div class="card row" onclick="openChat('${w}')"><b>${esc(w)}</b><span class="pill" style="flex:none">${(S.chats[w]||[]).length} msgs</span></div>`).join('');
  const M=S.chats[chatWith]||[];
  return h+`<div class="card"><div class="row"><button class="g" onclick="chatWith=null;render()">‹</button><b>${esc(chatWith)}</b><button class="g" onclick="callU('${chatWith}',false)">📞</button><button class="g" onclick="callU('${chatWith}',true)">🎥</button></div>
  <div id="ml" style="max-height:45vh;overflow:auto;margin:8px 0">${M.map(m=>`<div class="msg ${m.me?'me':''}">${esc(m.t)}</div>`).join('')||'<div class="mut">Say hello 👋</div>'}</div>
- <div class="row"><input id="mi" placeholder="Message" onkeydown="if(event.key=='Enter')sendM()"><button onclick="sendM()">Send</button></div></div>`};
-async function callU(w,v){if(!peer)return alert('Set a username in Setup first');try{const st=await navigator.mediaDevices.getUserMedia({audio:true,video:v});showCall(peer.call('regain-'+w,st,{metadata:{video:v}}),w,st)}catch(e){alert('Mic/camera blocked or unavailable')}}
-async function onCall(c){const w=c.peer.slice(7);notify('📞 '+w,'Incoming call');if(!confirm(w+' is calling. Answer?'))return c.close();try{const st=await navigator.mediaDevices.getUserMedia({audio:true,video:!!(c.metadata&&c.metadata.video)});c.answer(st);showCall(c,w,st)}catch(e){c.close()}}
-function showCall(c,w,st){curCall={c,st};const o=$('#call');o.innerHTML=`<div class="ph"><b>${esc(w)}</b></div><video id="rv" autoplay playsinline></video><div class="row"><button style="background:var(--rd)" onclick="endCall()">End call</button></div>`;o.style.display='flex';c.on('stream',r=>{$('#rv').srcObject=r});c.on('close',endCall)}
-function endCall(){if(!curCall)return;const{c,st}=curCall;curCall=null;st.getTracks().forEach(t=>t.stop());try{c.close()}catch(e){}$('#call').style.display='none'}
+ <div class="row"><input id="mi" placeholder="Message (delivered even if they are offline)" onkeydown="if(event.key=='Enter')sendM()"><button onclick="sendM()">Send</button></div></div>`};
+function addIce(c){if(!pc)return;if(pc.remoteDescription)pc.addIceCandidate(c).catch(()=>{});else setTimeout(()=>addIce(c),500)}
+function mkpc(id,st,w){pc=new RTCPeerConnection(ICE);cid=id;lstream=st;st.getTracks().forEach(t=>pc.addTrack(t,st));const cr=db.collection('calls').doc(id).collection('cand');
+ pc.onicecandidate=e=>{if(e.candidate)cr.add({by:me,c:JSON.stringify(e.candidate)})};
+ pc.ontrack=e=>{const v=$('#rv');if(v&&v.srcObject!=e.streams[0])v.srcObject=e.streams[0]};
+ pc.onconnectionstatechange=()=>{if(pc&&['failed','disconnected'].includes(pc.connectionState))endCall()};
+ showCall(w);cuns.push(cr.onSnapshot(sn=>sn.docChanges().forEach(ch=>{const d=ch.doc.data();if(ch.type=='added'&&d.by!=me)addIce(JSON.parse(d.c))})))}
+async function callU(w,v){if(!db)return alert('Comms not connected');if(pc)return;try{const to=await uidOf(w),st=await navigator.mediaDevices.getUserMedia({audio:true,video:v}),id=uid();mkpc(id,st,w);const o=await pc.createOffer();await pc.setLocalDescription(o);const ref=db.collection('calls').doc(id);
+ await ref.set({from:me,fromName:S.cfg.user,to,video:v,offer:{type:o.type,sdp:o.sdp},state:'ringing',ts:Date.now()});
+ cuns.push(ref.onSnapshot(async d=>{const x=d.data();if(!x||!pc)return;if(x.answer&&!pc.remoteDescription)await pc.setRemoteDescription(x.answer);if(x.state=='ended')endCall(true)}));
+ setTimeout(()=>{if(pc&&pc.connectionState!='connected'&&cid==id)endCall()},45000)}catch(e){alert('Call failed: '+e.message);endCall()}}
+async function incoming(d){const x=d.data();if(pc||Date.now()-x.ts>60000)return;notify('📞 '+x.fromName,'Incoming '+(x.video?'video ':'')+'call');
+ if(!confirm(x.fromName+' is calling'+(x.video?' (video)':'')+'. Answer?'))return d.ref.update({state:'ended'});
+ try{const st=await navigator.mediaDevices.getUserMedia({audio:true,video:!!x.video});mkpc(d.id,st,x.fromName);await pc.setRemoteDescription(x.offer);const a=await pc.createAnswer();await pc.setLocalDescription(a);await d.ref.update({answer:{type:a.type,sdp:a.sdp},state:'active'});cuns.push(d.ref.onSnapshot(s=>{if(s.data()&&s.data().state=='ended')endCall(true)}))}catch(e){alert('Call failed: '+e.message);endCall()}}
+function showCall(w){const o=$('#call');o.innerHTML=`<div class="ph"><b>${esc(w)}</b></div><video id="rv" autoplay playsinline></video><div class="row"><button class="g" onclick="lstream.getAudioTracks().forEach(t=>t.enabled=!t.enabled)">🎙 Mute</button><button style="background:var(--rd)" onclick="endCall()">End call</button></div>`;o.style.display='flex'}
+function endCall(r){if(!pc&&!cid)return;const id=cid;cid=null;cuns.forEach(f=>f());cuns=[];if(pc){try{pc.close()}catch(e){}pc=null}if(lstream){lstream.getTracks().forEach(t=>t.stop());lstream=null}$('#call').style.display='none';if(id&&!r&&db)db.collection('calls').doc(id).update({state:'ended'}).catch(()=>{})}
 /* BLOCKER */
 let lk=null;
 const slipToday=()=>S.slips.filter(x=>x.date==today()).reduce((a,b)=>a+b.min,0);
@@ -230,10 +242,12 @@ async function signIn(){const c=$('#cid');if(c&&c.value.trim()){localStorage.set
 async function afterTok(r){tok=r.access_token;texp=Date.now()+(r.expires_in-60)*1e3;
  const u=await(await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+tok}})).json();
  LK='pa:'+u.sub;S=fresh(JSON.parse(localStorage.getItem(LK)||'{}'));S.profile={name:u.name,email:u.email,pic:u.picture};
- sessionStorage.setItem('pa:s',JSON.stringify({tok,texp,sub:u.sub}));sync='Connected';hideGate();applyTheme();await pull();
+ sessionStorage.setItem('pa:s',JSON.stringify({tok,texp,sub:u.sub}));sync='Connected';hideGate();applyTheme();try{await fbInit()}catch(e){net='Comms error: '+e.message}await pull();
  if(!S.cfg.user)onboard();else{render();startPeer()}}
 function onboard(){const g=$('#gate');g.style.display='flex';g.innerHTML=`<div class="gc"><div class="logo">🕵️</div><h1 style="justify-content:center">Create agent profile</h1><div class="mut" style="text-align:center">Welcome ${esc(S.profile.name||'')}. Choose a codename (used in Comms).</div><input id="gn" placeholder="Codename"><label class="mut">Target exam<select id="ge"><option>JEE Main</option><option>JEE Advanced</option><option>Other</option></select></label><button onclick="finishOb()">Begin mission</button></div>`}
-function finishOb(){const n=$('#gn').value.trim().toLowerCase().replace(/[^a-z0-9]/g,'');if(n.length<3)return alert('Codename needs 3+ letters or numbers');S.cfg.user=n;S.cfg.exam=$('#ge').value;save();hideGate();render();startPeer();push()}
+async function finishOb(){const n=$('#gn').value.trim().toLowerCase().replace(/[^a-z0-9]/g,'');if(n.length<3)return alert('Codename needs 3+ letters or numbers');
+ if(FBCFG.projectId){try{await fbInit();const r=db.collection('usernames').doc(n);if((await r.get()).exists)return alert('That codename is already taken. Try another.');await r.set({uid:me,name:S.profile.name||''})}catch(e){return alert('Could not register codename: '+e.message)}}
+ S.cfg.user=n;S.cfg.exam=$('#ge').value;save();hideGate();render();startPeer();push()}
 function signOut(){try{google.accounts.oauth2.revoke(tok)}catch(e){}tok=null;sessionStorage.removeItem('pa:s');LK='regain';S=fresh({});if(peer){peer.destroy();peer=null}sync='Signed out';applyTheme();render();gate()}
 function restore(){try{const ss=JSON.parse(sessionStorage.getItem('pa:s')||'null');if(ss&&ss.texp>Date.now()&&cidv()){tok=ss.tok;texp=ss.texp;LK='pa:'+ss.sub;S=fresh(JSON.parse(localStorage.getItem(LK)||'{}'));sync='Connected';applyTheme();render();pull().then(()=>{if(S.cfg.user)startPeer()});return}}catch(e){}gate();if(S.cfg.user)startPeer()}
 async function api(url,o={}){if(!tok)throw new Error('Not signed in');if(Date.now()>texp){try{const r=await askTok('');tok=r.access_token;texp=Date.now()+(r.expires_in-60)*1e3}catch(e){tok=null;sync='Session expired';render();gate('Session expired – sign in again');throw new Error('Session expired – sign in again')}}
