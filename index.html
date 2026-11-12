@@ -46,7 +46,7 @@ nav button{border-radius:16px;box-shadow:none;font-weight:500;color:var(--mut)!i
 .gc{max-width:400px;margin:auto;width:100%;display:flex;flex-direction:column;gap:12px}.logo{font-size:56px;text-align:center}
 .gbtn{background:#fff;color:#222!important;border:1px solid #ddd;padding:13px;font-size:16px}
 .card{border-radius:var(--rad,18px)}body.noglow::before{display:none}
-#fab{position:fixed;right:12px;top:74px;z-index:6;width:42px;height:42px;border-radius:50%;padding:0;font-size:18px}
+#fab{touch-action:none;position:fixed;right:12px;top:74px;z-index:6;width:42px;height:42px;border-radius:50%;padding:0;font-size:18px}
 #fm{position:fixed;right:12px;top:122px;z-index:6;display:none;flex-direction:column;gap:6px;background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:8px;box-shadow:0 10px 30px #0006}
 #call .row{justify-content:center;gap:14px}.cb{width:58px;height:58px;border-radius:50%;padding:0;font-size:22px;flex:none}#call .cb.on{background:#fff!important;color:#000!important}
 #call video#rv{flex:1;width:100%;min-height:0;background:#000}
@@ -59,7 +59,7 @@ input[type=range]{padding:0}
 .ab{padding:8px 11px;border-radius:14px;margin:5px 0;white-space:pre-wrap;max-width:92%;background:var(--ac2)}.ab.u{background:var(--ac);color:var(--bg);margin-left:auto}
 </style></head><body>
 <main id="app"></main>
-<div id="lock"></div><div id="call"></div><div id="gate"></div><button id="fab" onclick="fabT()">✦</button><div id="fm"></div><div id="pl"><div id="pf"></div><audio id="au" controls style="display:none;width:100%"></audio></div>
+<div id="lock"></div><div id="call"></div><div id="gate"></div><button id="fab">✦</button><div id="fm"></div><div id="pl"><div id="pf"></div><audio id="au" controls style="display:none;width:100%"></audio></div>
 <nav id="nav"></nav>
 <script>
 const $=s=>document.querySelector(s);
@@ -222,7 +222,10 @@ document.addEventListener('visibilitychange',()=>{if(lk&&document.hidden){lk.hid
 const SP='https://open.spotify.com/';
 const popW=(u,n)=>{if(!window.open(u,n,'popup=yes,width=420,height=760'))alert('Allow pop-ups for this site, then tap again')};
 const popOut=()=>{const f=$('#pf iframe');openWin('sp',f?f.src:'')};
-function fabT(){const m=$('#fm');if(m.style.display=='flex'){m.style.display='none';return}m.innerHTML=`<button class="g" onclick="openWin('ai');fabT()">🤖 Assistant</button><button class="g" onclick="openWin('sp');fabT()">🎵 Spotify</button><button class="g" onclick="openWin('an');fabT()">🕉 Anirdesh</button><button class="g" onclick="openPop();fabT()">📜 Today’s Vachanamrut</button>`;m.style.display='flex'}
+function fabT(){const m=$('#fm');if(m.style.display=='flex'){m.style.display='none';return}const r=$('#fab').getBoundingClientRect();m.innerHTML=`<button class="g" onclick="openWin('ai');fabT()">🤖 Assistant</button><button class="g" onclick="openWin('sp');fabT()">🎵 Spotify</button><button class="g" onclick="openWin('an');fabT()">🕉 Anirdesh</button><button class="g" onclick="openPop();fabT()">📜 Today’s Vachanamrut</button>`;m.style.right='auto';m.style.left=Math.max(8,Math.min(innerWidth-210,r.left-160))+'px';m.style.top=Math.max(8,Math.min(innerHeight-260,r.bottom+8))+'px';m.style.display='flex'}
+function initFab(){const f=$('#fab');let sx,sy,ox,oy,mv=0;const ps=JSON.parse(localStorage.getItem('pa:fab')||'null');if(ps){f.style.left=Math.min(innerWidth-48,ps.x)+'px';f.style.top=Math.min(innerHeight-60,ps.y)+'px';f.style.right='auto'}
+ f.onpointerdown=e=>{const r=f.getBoundingClientRect();sx=e.clientX;sy=e.clientY;ox=r.left;oy=r.top;mv=0;f.setPointerCapture(e.pointerId);f.onpointermove=v=>{if(Math.abs(v.clientX-sx)+Math.abs(v.clientY-sy)>8)mv=1;if(mv){f.style.right='auto';f.style.left=Math.min(innerWidth-48,Math.max(4,ox+v.clientX-sx))+'px';f.style.top=Math.min(innerHeight-60,Math.max(4,oy+v.clientY-sy))+'px';$('#fm').style.display='none'}}};
+ f.onpointerup=()=>{f.onpointermove=null;if(mv){const r=f.getBoundingClientRect();localStorage.setItem('pa:fab',JSON.stringify({x:r.left,y:r.top}))}else fabT()}}
 async function delD(i){try{await api('https://www.googleapis.com/drive/v3/files/'+BL[i].id,{method:'DELETE'});BL.splice(i,1);sync='File deleted';render()}catch(e){fail(e)}}
 async function delBackup(){try{const id=await fid();if(id)await api('https://www.googleapis.com/drive/v3/files/'+id,{method:'DELETE'});sync='Cloud backup deleted';render()}catch(e){fail(e)}}
 /* FLOATING WINDOWS */
@@ -336,5 +339,5 @@ views.set=()=>`<div class="card" style="text-align:center">${S.profile?`<img src
  <div class="row" style="margin-top:10px">${tok?'<button class="g" onclick="driveTest()">Test Drive</button><button class="g" onclick="push()">Sync now</button><button class="r" onclick="signOut()">Sign out</button>':'<button onclick="gate()">Sign in</button>'}</div><div class="mut" style="margin-top:6px">${esc(sync)}</div></div>`+themeCard()+profileCard()+`<div class="card"><b>Backup file</b><div class="row" style="margin-top:6px"><button class="g" onclick="expB()">Export</button><button class="g" onclick="$('#imp').click()">Import</button></div><input id="imp" type="file" accept=".json" hidden onchange="impB(this.files[0])"><div class="row" style="margin-top:6px"><button class="r" onclick="armDel(this,delBackup)">Delete cloud backup</button><button class="r" onclick="armDel(this,()=>{S.qb=[];save();render()})">Delete imported questions</button></div></div>`;
 const expB=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S)],{type:'application/json'}));a.download='prabodham-backup.json';a.click()};
 const impB=f=>{const r=new FileReader();r.onload=()=>{try{const pf=S.profile;S=fresh(JSON.parse(r.result));S.profile=pf;save();applyTheme();render()}catch(e){alert('Invalid backup file')}};r.readAsText(f)};
-applyTheme();render();restore();
+applyTheme();render();initFab();restore();
 </script></body></html>
