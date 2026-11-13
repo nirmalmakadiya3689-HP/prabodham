@@ -57,6 +57,11 @@ input[type=range]{padding:0}
 .win.min .wb,.win.min .rs{display:none}.win.min{height:auto!important}
 .rs{position:absolute;right:0;bottom:0;width:28px;height:28px;cursor:nwse-resize;touch-action:none;background:linear-gradient(135deg,transparent 50%,var(--ac) 50%)}
 .ab{padding:8px 11px;border-radius:14px;margin:5px 0;white-space:pre-wrap;max-width:92%;background:var(--ac2)}.ab.u{background:var(--ac);color:var(--bg);margin-left:auto}
+main{padding:10px 12px}.card{padding:10px 12px;margin-bottom:8px}h1{font-size:17px;margin:2px 0 10px}h2{margin:12px 0 6px}
+button{padding:7px 12px;font-size:14px}button:not(.g):not(.r){background:linear-gradient(135deg,var(--ac),color-mix(in srgb,var(--ac) 65%,#fff))}
+input,textarea,select{padding:8px 10px;margin:3px 0;font-size:14px}.t{padding:5px 0;gap:8px}body{padding-bottom:150px}
+nav button{font-size:10px;padding:6px 2px;min-width:54px}nav span{font-size:17px}
+.tb{width:100%;border-collapse:collapse;font-size:13px}.tb td{border-top:1px solid var(--bd);padding:3px 4px;vertical-align:top}.ht{width:46px;color:var(--mut);white-space:nowrap}.tb .t{border:0;padding:2px 0}.nx{border-color:var(--ac)}
 </style></head><body>
 <main id="app"></main>
 <div id="lock"></div><div id="call"></div><div id="gate"></div><button id="fab">✦</button><div id="fm"></div><div id="pl"><div id="pf"></div><audio id="au" controls style="display:none;width:100%"></audio></div>
@@ -70,7 +75,7 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 const def={tasks:[],habits:[],journal:[],sessions:[],slips:[],limit:60,pledge:'',cfg:{cid:''},contacts:[],chats:{},kseen:'',updated:0};
 const fresh=o=>Object.assign(JSON.parse(JSON.stringify(def)),o);let LK='regain',texp=0,tc=null,tcOk,tcNo;let S=fresh(JSON.parse(localStorage.getItem('regain')||'{}'));
 let tab='plan',tok=null,sync='Local only',tm=null,pend=null;
-const tabs=[['plan','🗂','Missions'],['exam','🎯','Training'],['timer','⏱','Stakeout'],['track','✅','Protocols'],['katha','🕉','Satsang'],['music','🎧','Bhajans'],['focus','🚫','Shield'],['chat','💬','Comms'],['set','⚙️','HQ']];
+const tabs=[['plan','🗂','Missions'],['stats','📊','Week'],['exam','🎯','Training'],['timer','⏱','Stakeout'],['track','✅','Protocols'],['katha','🕉','Satsang'],['music','🎧','Bhajans'],['focus','🚫','Shield'],['chat','💬','Comms'],['set','⚙️','HQ']];
 function save(){S.updated=Date.now();localStorage.setItem(LK,JSON.stringify(S));clearTimeout(pend);if(tok)pend=setTimeout(push,2000)}
 function go(t){tab=t;render();if(t=='music'&&tok&&!BL.length)lsB();if(t=='katha'&&S.cfg.autopop!==0&&S.kseen!=today()){S.kseen=today();save();openPop()}}
 let lastTab=null;
@@ -82,17 +87,27 @@ function render(){const nv=$('#nav'),nl=nv.scrollLeft,sy=window.scrollY,ae=docum
 /* PLAN */
 let pd=today();
 const views={};
-views.plan=()=>{const L=S.tasks.filter(t=>t.date==pd).sort((a,b)=>(a.time||'99').localeCompare(b.time||'99'));
- const done=L.filter(t=>t.done).length;
+const HRS=[...Array(19)].map((_,i)=>i+5);
+const nextUp=()=>{const n=new Date(),nm=n.getHours()*60+n.getMinutes();let b=null;S.tasks.filter(t=>t.date==today()&&!t.done&&t.time).forEach(t=>{const d=+t.time.slice(0,2)*60+ +t.time.slice(3)-nm;if(d>=0&&(!b||d<b.d))b={t,d}});return b};
+const slot=h=>{$('#tm').value=h+':00';$('#tt').focus()};
+const trow=t=>`<div class="t ${t.done?'d':''}"><input type="checkbox" ${t.done?'checked':''} onchange="tg('${t.id}')"><span class="x">${t.time&&t.time.slice(3)!='00'?'<b>'+t.time+'</b> ':''}${esc(t.t)}</span><button class="r" onclick="dl('tasks','${t.id}')">✕</button></div>`;
+views.plan=()=>{const L=S.tasks.filter(t=>t.date==pd),done=L.filter(t=>t.done).length,nx=pd==today()?nextUp():null,inT=t=>t.time&&+t.time.slice(0,2)>=5;
+ const rows=HRS.map(h=>{const hh=String(h).padStart(2,'0'),it=L.filter(t=>inT(t)&&t.time.slice(0,2)==hh).sort((a,b)=>a.time.localeCompare(b.time));return `<tr><td class="ht" onclick="slot('${hh}')">${hh}:00</td><td>${it.map(trow).join('')||`<span class="mut" onclick="slot('${hh}')">＋</span>`}</td></tr>`}).join('');
+ const un=L.filter(t=>!inT(t));
  return `<div class="card"><div class="row"><button class="g" onclick="shift(-1)">‹</button><input type="date" value="${pd}" onchange="pd=this.value;render()"><button class="g" onclick="shift(1)">›</button></div>
- <div class="row"><input id="tt" placeholder="Add task…"><input id="tm" type="time" style="max-width:110px"><button onclick="addT()">Add</button><button class="g" onclick="addT(1)">Backlog</button></div></div>
- <div class="card"><div class="row"><span class="mut">${done}/${L.length} done</span><button class="g" onclick="mailPlan()">✉ Email plan</button></div><div class="bar"><i style="width:${L.length?done/L.length*100:0}%"></i></div>
- ${L.map(t=>`<div class="t ${t.done?'d':''}"><input type="checkbox" ${t.done?'checked':''} onchange="tg('${t.id}')"><span class="x">${t.time?`<b>${t.time}</b> `:''}${esc(t.t)}</span><button class="r" onclick="dl('tasks','${t.id}')">✕</button></div>`).join('')||'<div class="mut">Nothing planned. Add your first task.</div>'}</div>`+bk()};
+ <div class="row"><input id="tt" placeholder="Add task…"><input id="tm" type="time" style="max-width:104px"><button onclick="addT()">Add</button><button class="g" onclick="addT(1)">Backlog</button></div></div>`+(nx?`<div class="card nx">⏰ Next: <b>${nx.t.time} ${esc(nx.t.t)}</b> · in ${nx.d} min</div>`:'')+
+ `<div class="card"><div class="row"><span class="mut">${done}/${L.length} done</span><button class="g" onclick="autoDay()">✨ Auto-fill day</button><button class="g" onclick="mailPlan()">✉</button></div><div class="bar" style="margin:6px 0"><i style="width:${L.length?done/L.length*100:0}%"></i></div><table class="tb">${rows}</table>${un.length?'<div class="mut" style="margin-top:6px">Other times / no time</div>'+un.map(trow).join(''):''}</div>`+bk()};
+const DEF=[['05:30','Wake · prayer'],['06:00','Katha / Vachanamrut reading'],['07:00','Exercise · freshen up'],['08:00','Breakfast'],['09:00','Physics study'],['11:00','Chemistry study'],['13:00','Lunch · rest'],['15:00','Maths practice'],['17:00','Revision · formulas'],['18:30','Evening prayer · walk'],['20:00','JEE practice test'],['21:30','Journal · plan tomorrow'],['22:30','Sleep']];
+async function autoDay(){const nw=[];DEF.forEach(([tm,t])=>{if(!S.tasks.some(x=>x.date==pd&&x.time==tm&&x.t==t)){const o={id:uid(),t,date:pd,time:tm,done:false};S.tasks.push(o);nw.push(o)}});save();render();for(const o of nw)await createEv(o)}
+const lt=d=>iso(d)+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':00';
+const calErr=e=>{if(!window._ce){window._ce=1;alert('Calendar reminders unavailable: '+e.message+'\nEnable the Google Calendar API in Google Cloud, then sign out and sign in again.')}};
+async function createEv(t){if(!tok||S.cfg.cal===0||!t.time||!t.date)return;try{const e=new Date(t.date+'T'+t.time+':00'),en=new Date(e.getTime()+45*6e4),ld=S.cfg.lead||10;const r=await api('https://www.googleapis.com/calendar/v3/calendars/primary/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({summary:'📌 '+t.t,description:'Prabodham Academy',start:{dateTime:lt(e),timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone},end:{dateTime:lt(en),timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone},reminders:{useDefault:false,overrides:[{method:'email',minutes:ld},{method:'popup',minutes:ld}]}})});t.eid=(await r.json()).id;save()}catch(e){calErr(e)}}
+async function delEv(id){if(!id||!tok)return;try{await api('https://www.googleapis.com/calendar/v3/calendars/primary/events/'+id,{method:'DELETE'})}catch(e){}}
 const bk=()=>`<div class="card"><b>📂 Mission backlog (no date)</b>${S.tasks.filter(t=>!t.date).map(t=>`<div class="t ${t.done?'d':''}"><input type="checkbox" ${t.done?'checked':''} onchange="tg('${t.id}')"><span class="x">${esc(t.t)}</span><button class="r" onclick="dl('tasks','${t.id}')">✕</button></div>`).join('')||'<div class="mut">Empty</div>'}</div>`;
 const shift=n=>{const d=new Date(pd+'T00:00');d.setDate(d.getDate()+n);pd=iso(d);render()};
-const addT=b=>{const t=$('#tt').value.trim();if(!t)return;S.tasks.push({id:uid(),t,date:b?'':pd,time:$('#tm').value,done:false});save();render()};
+const addT=b=>{const t=$('#tt').value.trim();if(!t)return;const nt={id:uid(),t,date:b?'':pd,time:b?'':$('#tm').value,done:false};S.tasks.push(nt);save();render();createEv(nt)};
 const tg=id=>{const t=S.tasks.find(x=>x.id==id);t.done=!t.done;save();render()};
-const dl=(k,id)=>{S[k]=S[k].filter(x=>x.id!=id);save();render()};
+const dl=(k,id)=>{if(k=='tasks'){const o=S.tasks.find(x=>x.id==id);if(o&&o.eid)delEv(o.eid)}S[k]=S[k].filter(x=>x.id!=id);save();render()};
 /* TIMER */
 let T={mode:'Focus',left:25*60,run:false,len:{Focus:25,Break:5,Long:15}};
 views.timer=()=>{const m=Math.floor(T.left/60),s=T.left%60;
@@ -129,9 +144,9 @@ views.katha=()=>`<div class="card"><b>🕉 Swaminarayan Satsang Intel</b><div cl
 const addJ=()=>{const t=$('#jt').value.trim();if(!t)return;S.journal.push({id:uid(),date:today(),mood,text:t});save();render()};
 /* NOTIFY */
 function notify(t,b){if(window.Notification&&Notification.permission=='granted'){try{new Notification(t,{body:b})}catch(e){}}}
-const fired={};const fire=(id,t,b)=>{if(!fired[id]){fired[id]=1;notify(t,b)}};
+const fired={};const fire=(id,t,b)=>{if(!fired[id]){fired[id]=1;notify(t,b);alert(t+' — '+b)}};
 setInterval(()=>{const n=new Date(),hm=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0'),k=today()+hm;
- S.tasks.filter(t=>t.date==today()&&!t.done&&t.time==hm).forEach(t=>fire('t'+t.id+k,'⏰ '+t.t,'Due now'));
+ S.tasks.filter(t=>t.date==today()&&!t.done&&t.time==hm).forEach(t=>fire('t'+t.id+k,'⏰ '+t.t,'Due now'));const L2=new Date(Date.now()+(S.cfg.lead||10)*6e4),h2=String(L2.getHours()).padStart(2,'0')+':'+String(L2.getMinutes()).padStart(2,'0');S.tasks.filter(t=>t.date==today()&&!t.done&&t.time==h2).forEach(t=>fire('l'+t.id+k,'⏳ In '+(S.cfg.lead||10)+' min',t.t));if(tab=='plan'&&n.getSeconds()<20)render();
  if(hm==(S.cfg.kt||'06:00'))fire('k'+k,'📿 Katha time','Read today’s Vachanamrut');
  if(hm==(S.cfg.ht||'21:00'))fire('h'+k,'✅ Habits','Check in your habits for today')},20000);
 const askN=()=>window.Notification?Notification.requestPermission().then(render):alert('Notifications unsupported here');
@@ -139,7 +154,7 @@ const saveP=()=>{S.cfg.user=$('#un').value.trim().slice(0,24);S.cfg.email=$('#em
 const profileCard=()=>`<div class="card"><b>Profile & alerts</b>
  <input id="un" placeholder="Display name" value="${esc(S.cfg.user||'')}">
  <input id="em" type="email" placeholder="Your email" value="${esc(S.cfg.email||'')}">
- <label class="mut">Katha reminder<input id="kt" type="time" value="${S.cfg.kt||'06:00'}"></label>
+ ${onoff("cal","Calendar reminders (Gmail + phone)")}<label class="mut">Remind me (minutes before)<input type="number" value="${S.cfg.lead||10}" onchange="setR('lead',+this.value)"></label><label class="mut">Katha reminder<input id="kt" type="time" value="${S.cfg.kt||'06:00'}"></label>
  <label class="mut">Habit reminder<input id="ht" type="time" value="${S.cfg.ht||'21:00'}"></label>
  <div class="row"><button onclick="saveP()">Save</button><button class="g" onclick="askN()">Enable notifications</button></div>
  <div class="mut" style="margin-top:6px">Notifications: ${window.Notification?Notification.permission:'unsupported'} (they fire while the app is open). Chat: ${esc(net)}</div></div>`;
@@ -205,7 +220,7 @@ function endCall(r){if(!pc&&!cid)return;const id=cid;cid=null;cuns.forEach(f=>f(
 let LKS=null,lki=null;
 const slipToday=()=>S.slips.filter(x=>x.date==today()).reduce((a,b)=>a+b.min,0);
 views.focus=()=>{const u=slipToday(),p=Math.min(100,u/S.limit*100);
- return `<div class="card"><b>Reel / scroll budget</b><div class="mut">A web page can’t block other apps. For real blocking, also enable Screen Time (iOS) or Digital Wellbeing (Android) — then log your slips here to stay honest.</div>
+ return `${reelCard()}<div class="card"><b>Reel / scroll budget</b><div class="mut">A web page can’t block other apps. For real blocking, also enable Screen Time (iOS) or Digital Wellbeing (Android) — then log your slips here to stay honest.</div>
  <div class="bar" style="margin:10px 0"><i style="width:${p}%;background:${p>=100?'var(--rd)':'var(--ac)'}"></i></div><div>${u} / ${S.limit} min today</div>
  <div class="row"><input id="sm" type="number" placeholder="Minutes wasted"><input id="sa" placeholder="App (Reels…)"><button onclick="addS()">Log</button></div>
  <label class="mut">Daily limit (min)<input type="number" value="${S.limit}" onchange="S.limit=+this.value;save();render()"></label>
@@ -223,6 +238,20 @@ async function exitGo(){if(LKS.wait>Date.now())return alert('Too many wrong trie
 function endLock(done){clearInterval(lki);const m=LKS&&LKS.m;localStorage.removeItem('pa:lock');LKS=null;$('#lock').style.display='none';if(done){S.sessions.push({date:today(),min:m});save();alert('Lock complete 🎉 +'+m+' focused minutes')}render()}
 function restoreLock(){try{const x=JSON.parse(localStorage.getItem('pa:lock')||'null');if(!x)return;LKS=x;if(LKS.end<=Date.now())return endLock(true);LKS.left++;S.slips.push({date:today(),min:1,app:'left during lock'});save();saveL();showLock()}catch(e){localStorage.removeItem('pa:lock')}}
 document.addEventListener('visibilitychange',()=>{if(!LKS)return;if(document.hidden)LKS.hidAt=Date.now();else if(LKS.hidAt){LKS.left++;S.slips.push({date:today(),min:Math.max(1,Math.round((Date.now()-LKS.hidAt)/6e4)),app:'left lock'});LKS.hidAt=0;save();saveL()}});
+/* WEEK */
+const dnm=d=>new Date(d+'T00:00').toLocaleDateString([],{weekday:'short'});
+const weekData=()=>[...Array(7)].map((_,i)=>{const dt=new Date();dt.setDate(dt.getDate()-6+i);const d=iso(dt);const T=S.tasks.filter(t=>t.date==d),ts=(S.tests||[]).filter(x=>x.date==d);return{d,T:T.length,dn:T.filter(t=>t.done).length,f:S.sessions.filter(x=>x.date==d).reduce((a,b)=>a+b.min,0),h:S.habits.filter(x=>x.days.includes(d)).length,sl:S.slips.filter(x=>x.date==d).reduce((a,b)=>a+b.min,0),rl:(S.reels&&S.reels[d])||0,ts:ts.length?Math.round(ts.reduce((a,b)=>a+b.sc/b.max,0)/ts.length*100):null}});
+views.stats=()=>{const W=weekData(),sm=k=>W.reduce((a,x)=>a+x[k],0),mx=Math.max(30,...W.map(x=>x.f)),tp=sm('T')?Math.round(sm('dn')/sm('T')*100):0;
+ return `<div class="card"><b>📊 Last 7 days</b><div class="row" style="margin:8px 0"><div><div class="big" style="font-size:26px;margin:0">${sm('f')}</div><div class="mut">focus min</div></div><div><div class="big" style="font-size:26px;margin:0">${tp}%</div><div class="mut">tasks done</div></div><div><div class="big" style="font-size:26px;margin:0">${sm('rl')}</div><div class="mut">reels</div></div></div>
+ <div class="row" style="align-items:flex-end;height:78px;gap:6px">${W.map(x=>`<div style="text-align:center"><div style="height:${Math.max(2,x.f/mx*58)}px;background:var(--ac);border-radius:6px 6px 0 0"></div><div class="mut" style="font-size:10px">${dnm(x.d)[0]}</div></div>`).join('')}</div></div>
+ <div class="card"><table class="tb"><tr class="mut"><td>Day</td><td>Tasks</td><td>Focus</td><td>Habits</td><td>Reels</td><td>Slips</td><td>Test</td></tr>${W.map(x=>`<tr><td>${dnm(x.d)}</td><td>${x.dn}/${x.T}</td><td>${x.f}m</td><td>${x.h}/${S.habits.length}</td><td>${x.rl}</td><td>${x.sl}m</td><td>${x.ts==null?'–':x.ts+'%'}</td></tr>`).join('')}<tr><td><b>Σ</b></td><td><b>${sm('dn')}/${sm('T')}</b></td><td><b>${sm('f')}m</b></td><td><b>${sm('h')}</b></td><td><b>${sm('rl')}</b></td><td><b>${sm('sl')}m</b></td><td></td></tr></table>
+ <button class="g" style="margin-top:8px" onclick="mail('Weekly report – Prabodham Academy',W_TXT())">✉ Email this report</button></div>`};
+const W_TXT=()=>weekData().map(x=>`${x.d}: tasks ${x.dn}/${x.T}, focus ${x.f}m, habits ${x.h}, reels ${x.rl}, slips ${x.sl}m, test ${x.ts==null?'-':x.ts+'%'}`).join('\n');
+/* REEL COUNTER (BrainPal) */
+const reelN=()=>(S.reels&&S.reels[today()])||0;
+const setReel=v=>{S.reels=S.reels||{};S.reels[today()]=Math.max(0,v||0);save();render()};
+const setR2=(k,v)=>{S[k]=v;save();render()};
+const reelCard=()=>{const n=reelN(),cap=S.reelCap||100,p=Math.min(100,n/cap*100);return `<div class="card"><b>🧠 Reel counter · BrainPal</b><div class="mut">BrainPal counts reels inside other apps and has no export, so type its number here. It then appears in your weekly report.</div><div class="bar" style="margin:8px 0"><i style="width:${p}%;background:${p>=100?'var(--rd)':'var(--ac)'}"></i></div><div class="row"><b style="font-size:22px;flex:none">${n}</b><span class="mut">/ ${cap}</span><button class="g" onclick="setReel(reelN()+1)">+1</button><button class="g" onclick="setReel(reelN()+10)">+10</button></div><div class="row" style="margin-top:6px"><input id="rn" type="number" placeholder="Count from BrainPal"><button onclick="setReel(+$('#rn').value)">Save</button></div><div class="row"><label class="mut">Daily cap<input type="number" value="${cap}" onchange="setR2('reelCap',+this.value)"></label><button class="g" onclick="window.open('https://play.google.com/store/apps/details?id=com.brainrot.android','_blank')">Open BrainPal ↗</button></div></div>`};
 /* POPUPS & FILES */
 const SP='https://open.spotify.com/';
 const popW=(u,n)=>{if(!window.open(u,n,'popup=yes,width=420,height=760'))alert('Allow pop-ups for this site, then tap again')};
@@ -236,7 +265,7 @@ async function delBackup(){try{const id=await fid();if(id)await api('https://www
 /* FLOATING WINDOWS */
 let zt=30,WN={},AIH=[];
 const WD={
- sp:{t:'🎵 Spotify',w:340,h:430,html:()=>`<div class="row" style="padding:6px"><input id="swu" placeholder="Spotify / YouTube link" style="margin:0"><button onclick="spGo()">▶</button></div><div style="padding:0 6px 4px">${(S.bh||[]).map((b,i)=>`<button class="g" style="margin:2px" onclick="spGo(S.bh[${i}])">▶ ${esc(b.slice(-14))}</button>`).join('')}</div><div id="swf" style="flex:1;min-height:0;display:flex"><div class="mut" style="padding:10px">Paste a playlist, album or track link. Sign in to Spotify in this browser for full songs; otherwise you get 30-second previews.</div></div>`,load:u=>u&&spGo(u)},
+ sp:{t:'🎵 Spotify',w:340,h:430,html:()=>`<div class="row" style="padding:6px"><input id="swu" placeholder="Spotify / YouTube link" style="margin:0"><button onclick="spGo()">▶</button><button class="g" onclick="window.open(window._spU||SP,'_blank')">App ↗</button></div><div style="padding:0 6px 4px">${(S.bh||[]).map((b,i)=>`<button class="g" style="margin:2px" onclick="spGo(S.bh[${i}])">▶ ${esc(b.slice(-14))}</button>`).join('')}</div><div id="swf" style="flex:1;min-height:0;display:flex"><div class="mut" style="padding:10px">Paste a playlist, album or track link. The embedded player only gives 30-second previews. For full songs tap “App ↗” (opens the Spotify app), or use YouTube links, which play fully here.</div></div>`,load:u=>u&&spGo(u)},
  an:{t:'🕉 Anirdesh',w:350,h:480,html:()=>`<div class="row" style="padding:6px"><button class="g" onclick="anGo(AN)">Home</button><button class="g" onclick="anGo(VU())">Today</button><button class="g" onclick="window.open($('#anf').src,'_blank')">↗</button></div><iframe id="anf" src="${AN}"></iframe><div class="mut" style="padding:4px 8px">Blank? Anirdesh may refuse in-app display. Tap ↗.</div>`,load:u=>u&&anGo(u)},
  ai:{t:'🤖 AI Assistant',w:350,h:500,html:()=>'<div id="aib" style="flex:1;overflow:auto;padding:8px"></div><div class="row" style="padding:6px"><input id="aii" style="margin:0" placeholder="Ask: JEE, schedule, satsang…" onkeydown="if(event.key==\'Enter\')aiSend()"><button onclick="aiSend()">➤</button></div>',load:()=>aiRender()}};
 function front(w){w.style.zIndex=++zt}
@@ -246,7 +275,7 @@ function openWin(k,arg){let w=WN[k];const d=WD[k];if(!w){w=WN[k]=document.create
 const closeW=k=>{if(WN[k]){WN[k].remove();delete WN[k]}};
 function dragW(w){const h=w.querySelector('.wh');let ox,oy;h.onpointerdown=e=>{if(e.target.tagName=='BUTTON')return;front(w);const r=w.getBoundingClientRect();ox=e.clientX-r.left;oy=e.clientY-r.top;h.setPointerCapture(e.pointerId);h.onpointermove=v=>{w.style.left=Math.min(innerWidth-70,Math.max(70-w.offsetWidth,v.clientX-ox))+'px';w.style.top=Math.min(innerHeight-50,Math.max(0,v.clientY-oy))+'px'};h.onpointerup=()=>{h.onpointermove=null}}}
 function resW(w){const r=w.querySelector('.rs');r.onpointerdown=e=>{e.stopPropagation();front(w);const b=w.getBoundingClientRect();r.setPointerCapture(e.pointerId);r.onpointermove=v=>{w.style.width=Math.max(230,v.clientX-b.left)+'px';w.style.height=Math.max(170,v.clientY-b.top)+'px'};r.onpointerup=()=>{r.onpointermove=null}}}
-function spGo(u){u=u||$('#swu').value;const e=/\/embed\//.test(u)?u:emb(u||'');if(!e)return alert('Paste a Spotify or YouTube link');$('#swf').innerHTML=`<iframe src="${e}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen"></iframe>`}
+function spGo(u){u=u||$('#swu').value;window._spU=/\/embed\//.test(u)?u.replace('/embed/','/'):u;const e=/\/embed\//.test(u)?u:emb(u||'');if(!e)return alert('Paste a Spotify or YouTube link');$('#swf').innerHTML=`<iframe src="${e}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen"></iframe>`}
 const anGo=u=>{$('#anf').src=u};
 const SYS=()=>`You are the in-app study assistant of Prabodham Academy, a spy-themed study app for a JEE aspirant who follows the Swaminarayan sampradaya. Reply concisely for a phone screen. Help with JEE Physics, Chemistry and Maths (explain, then check understanding), schedules and planning, and respectful satsang questions. Today is ${today()}. The student's tasks today: ${S.tasks.filter(t=>t.date==today()).map(t=>(t.time||'')+' '+t.t+(t.done?' (done)':'')).join('; ')||'none'}. Habits: ${S.habits.map(h=>h.name).join(', ')||'none'}.`;
 const prov=()=>localStorage.getItem('pa:prov')||'gemini',kname=()=>prov()=='gemini'?'pa:gkey':'pa:key';
@@ -255,14 +284,21 @@ function aiRender(busy){const b=$('#aib');if(!b)return;const p=prov(),key=localS
  if(!key){b.innerHTML=sw+(p=='gemini'?'<div class="mut">Free, no card: open aistudio.google.com → Get API key → Create API key, then paste it below. Stored only on this device, never in your Drive.</div>':'<div class="mut">Paid: add your own Anthropic API key from console.anthropic.com (set a low spending limit). Stored only on this device.</div>')+'<input id="aik" type="password" placeholder="API key"><button onclick="localStorage.setItem(kname(),$(\'#aik\').value.trim());aiRender()">Save key</button>';return}
  b.innerHTML=sw+(AIH.length?'':`<div class="mut">Hello agent. Ask me anything, or tap:</div><button class="g" style="margin:4px 2px" onclick="aiSend('Plan my day using my tasks')">🗓 Plan my day</button><button class="g" style="margin:4px 2px" onclick="aiSend('Give me one tough JEE Main question and wait for my answer')">🎯 Quiz me</button>`)+AIH.map(m=>`<div class="ab ${m.role=='user'?'u':''}">${esc(m.content)}</div>`).join('')+(busy?'<div class="ab">Thinking…</div>':'')+(AIH.length?'<button class="r" onclick="AIH=[];aiRender()">Clear</button> ':'')+'<button class="r" onclick="localStorage.removeItem(kname());aiRender()">Forget key</button>';b.scrollTop=1e9}
 async function aiSend(t){const i=$('#aii'),p=prov(),key=localStorage.getItem(kname());t=t||(i&&i.value.trim());if(!t)return;if(!key)return aiRender();if(i)i.value='';AIH.push({role:'user',content:t});aiRender(1);
- try{let out;
-  if(p=='claude'){const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:localStorage.getItem('pa:model')||'claude-sonnet-5-5',max_tokens:900,system:SYS(),messages:AIH.slice(-20)})});const j=await r.json();if(!r.ok)throw new Error((j.error&&j.error.message)||r.status);out=j.content.map(c=>c.text||'').join('')}
-  else{const ms=[...new Set([localStorage.getItem('pa:gmodel')||'gemini-3.8-flash','gemini-3.8-flash','gemini-3.6-flash','gemini-flash-lite-latest','gemini-flash-latest','gemini-2.5-flash'])];let err=new Error('No Gemini model available');
-   for(const m of ms){const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`,{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':key},body:JSON.stringify({systemInstruction:{parts:[{text:SYS()}]},contents:AIH.slice(-20).map(x=>({role:x.role=='user'?'user':'model',parts:[{text:x.content}]})),generationConfig:{maxOutputTokens:900}})});const j=await r.json();
-    if(r.status==404){err=new Error('Model '+m+' unavailable');continue}if([429,500,503].includes(r.status)){err=new Error('Gemini is busy right now ('+r.status+'). Wait a minute and tap send again.');await new Promise(z=>setTimeout(z,1500));continue}if(!r.ok)throw new Error((j.error&&j.error.message)||r.status);
-    out=(((j.candidates||[])[0]||{}).content||{parts:[]}).parts.map(x=>x.text||'').join('')||'(no reply)';localStorage.setItem('pa:gmodel',m);err=null;break}
-   if(err)throw err}
-  AIH.push({role:'assistant',content:out})}catch(e){AIH.pop();if(i)i.value=t;alert('Assistant error: '+e.message)}aiRender()}
+ try{
+  if(p=='claude'){const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:localStorage.getItem('pa:model')||'claude-sonnet-5-5',max_tokens:700,system:SYS(),messages:AIH.slice(-20)})});const j=await r.json();if(!r.ok)throw new Error((j.error&&j.error.message)||r.status);AIH.push({role:'assistant',content:j.content.map(c=>c.text||'').join('')})}
+  else{const ms=['gemini-flash-lite-latest','gemini-3.8-flash','gemini-flash-latest'];let err=new Error('No Gemini model answered'),ok=0;
+   for(const m of ms){const ac=new AbortController(),to=setTimeout(()=>ac.abort(),20000);
+    try{const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:streamGenerateContent?alt=sse`,{method:'POST',signal:ac.signal,headers:{'content-type':'application/json','x-goog-api-key':key},body:JSON.stringify({systemInstruction:{parts:[{text:SYS()}]},contents:AIH.slice(-16).map(x=>({role:x.role=='user'?'user':'model',parts:[{text:x.content}]})),generationConfig:{maxOutputTokens:700}})});
+     if(r.status==404){err=new Error('Model '+m+' unavailable');continue}
+     if([429,500,503].includes(r.status)){err=new Error('Gemini is busy ('+r.status+'). Try again shortly.');continue}
+     if(!r.ok){let j={};try{j=await r.json()}catch(e){}throw new Error((j.error&&j.error.message)||r.status)}
+     const rd=r.body.getReader(),dec=new TextDecoder();let buf='',st=0;
+     for(;;){const {done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});const ls=buf.split('\n');buf=ls.pop();
+      for(const ln of ls){if(!ln.startsWith('data:'))continue;try{const j=JSON.parse(ln.slice(5)),tx=(((j.candidates||[])[0]||{}).content||{parts:[]}).parts.map(x=>x.text||'').join('');if(tx){clearTimeout(to);if(!st){AIH.push({role:'assistant',content:''});st=1}AIH[AIH.length-1].content+=tx;aiRender()}}catch(e){}}}
+     clearTimeout(to);if(!st)AIH.push({role:'assistant',content:'(no reply)'});ok=1;break}
+    catch(e){clearTimeout(to);err=e.name=='AbortError'?new Error('Gemini took too long. Try again.'):e;if(!/unavailable|busy|too long/.test(err.message))throw err}}
+   if(!ok)throw err}
+ }catch(e){if(AIH[AIH.length-1].role=='user'){AIH.pop();if(i)i.value=t}alert('Assistant error: '+e.message)}aiRender()}
 /* INSTALL (PWA) */
 let dip=null;addEventListener('beforeinstallprompt',e=>{e.preventDefault();dip=e;if(tab=='set')render()});
 const doInstall=()=>{if(dip){dip.prompt();dip=null}else alert('Chrome: tap ⋮ → Add to Home screen / Install app. iPhone Safari: Share → Add to Home Screen.')};
@@ -270,13 +306,13 @@ const instCard=()=>matchMedia('(display-mode: standalone)').matches?'':'<div cla
 if('serviceWorker' in navigator&&location.protocol=='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
 /* THEMES */
 const TH={noir:['#0b0d0c','#141816','#e6ede8','#8b958f','#3ddc84','#12261b','#232b26'],navy:['#0a1424','#101d33','#e5edf8','#8a9bb5','#4da3ff','#142a4a','#1f3354'],crimson:['#14080a','#1f0f12','#f3e6e7','#a58c8e','#ff4d5e','#341218','#3a1c21'],olive:['#11140b','#1a1f12','#e9ecde','#98a085','#a3b95a','#262e14','#2f3a1a'],slate:['#1a1d26','#232734','#e8e9f2','#9395ab','#c3a6ff','#2e2650','#323750'],gold:['#13100a','#1d1810','#f3ecdc','#a39a82','#e0b34a','#33290f','#3b3217'],paper:['#f1ebdd','#fbf7ec','#1d1b16','#7a7462','#7a1f1f','#efdada','#d9d1bc']};
-function applyTheme(){const c=S.cfg,t=TH[c.theme||'noir'],r=document.documentElement.style;['--bg','--card','--tx','--mut','--ac','--ac2','--bd'].forEach((k,i)=>r.setProperty(k,t[i]));if(c.acc)r.setProperty('--ac',c.acc);r.setProperty('--f',{mono:'ui-monospace,Menlo,monospace',sans:'system-ui,sans-serif',serif:'Georgia,serif'}[c.font||'sans']);document.body.style.backgroundImage=c.grid===0?'none':'linear-gradient(var(--bd) 1px,transparent 1px),linear-gradient(90deg,var(--bd) 1px,transparent 1px)';document.body.style.backgroundSize='28px 28px';r.setProperty('--rad',(c.rad||18)+'px');document.body.style.fontSize=(c.fs||16)+'px';document.body.classList.toggle('noglow',c.glow===0);const f=$('#fab');if(f)f.style.display=c.fab===0?'none':'block'}
+function applyTheme(){const c=S.cfg,t=TH[c.theme||'noir'],r=document.documentElement.style;['--bg','--card','--tx','--mut','--ac','--ac2','--bd'].forEach((k,i)=>r.setProperty(k,t[i]));if(c.acc)r.setProperty('--ac',c.acc);r.setProperty('--f',{mono:'ui-monospace,Menlo,monospace',sans:'system-ui,sans-serif',serif:'Georgia,serif'}[c.font||'sans']);document.body.style.backgroundImage=c.grid===0?'none':'linear-gradient(var(--bd) 1px,transparent 1px),linear-gradient(90deg,var(--bd) 1px,transparent 1px)';document.body.style.backgroundSize='28px 28px';r.setProperty('--rad',(c.rad||18)+'px');document.body.style.fontSize=(c.fs||15)+'px';document.body.classList.toggle('noglow',c.glow===0);const f=$('#fab');if(f)f.style.display=c.fab===0?'none':'block'}
 const setR=(k,v)=>{S.cfg[k]=v;save();applyTheme()};const togTab=k=>{const h=S.cfg.hide||[];S.cfg.hide=h.includes(k)?h.filter(x=>x!=k):[...h,k];save();render()};
 const onoff=(k,l)=>`<label class="mut">${l}<select onchange="setC('${k}',+this.value)"><option value="1">on</option><option value="0" ${S.cfg[k]===0?'selected':''}>off</option></select></label>`;
 const setC=(k,v)=>{S.cfg[k]=v;if(k=='theme')delete S.cfg.acc;save();applyTheme();render()};
 const themeCard=()=>`<div class="card"><b>🎭 Disguise</b><div class="row" style="flex-wrap:wrap;margin:8px 0">${Object.keys(TH).map(k=>`<button class="${(S.cfg.theme||'noir')==k?'':'g'}" onclick="setC('theme','${k}')" style="border-left:14px solid ${TH[k][4]}">${k}</button>`).join('')}</div>
 <div class="row"><label class="mut">Accent<input type="color" value="${S.cfg.acc||TH[S.cfg.theme||'noir'][4]}" onchange="setC('acc',this.value)"></label><label class="mut">Font<select onchange="setC('font',this.value)">${['sans','mono','serif'].map(f=>`<option ${S.cfg.font==f?'selected':''}>${f}</option>`).join('')}</select></label><label class="mut">Grid<select onchange="setC('grid',+this.value)"><option value="1">on</option><option value="0" ${S.cfg.grid===0?'selected':''}>off</option></select></label></div></div>
-<div class="row"><label class="mut">Corners<input type="range" min="6" max="30" value="${S.cfg.rad||18}" oninput="setR('rad',+this.value)"></label><label class="mut">Text size<input type="range" min="13" max="20" value="${S.cfg.fs||16}" oninput="setR('fs',+this.value)"></label></div>
+<div class="row"><label class="mut">Corners<input type="range" min="6" max="30" value="${S.cfg.rad||18}" oninput="setR('rad',+this.value)"></label><label class="mut">Text size<input type="range" min="13" max="20" value="${S.cfg.fs||15}" oninput="setR('fs',+this.value)"></label></div>
 <div class="row">${onoff('glow','Glow')}${onoff('fab','Quick ✦ button')}${onoff('autopop','Daily Vachanamrut')}</div>
 <div class="mut" style="margin-top:8px">Tabs (tap to hide / show)</div><div class="row" style="flex-wrap:wrap">${tabs.filter(t=>t[0]!='set').map(t=>`<button class="${(S.cfg.hide||[]).includes(t[0])?'g':''}" onclick="togTab('${t[0]}')">${t[1]} ${t[2]}</button>`).join('')}</div></div>`;
 /* JEE TRAINING */
@@ -314,7 +350,7 @@ views.music=()=>`<div class="card"><b>🎧 Bhajan radio</b><div class="mut">Past
 <div class="card"><b>🗄 Bhajan vault (your Drive)</b><div class="mut">Add your own audio files. They’re stored in your Google Drive and play in-app. Spotify/YouTube audio can’t be downloaded.</div><input type="file" accept="audio/*" multiple onchange="addB(this.files)"><button class="g" onclick="lsB()">Refresh vault</button>${BL.map((f,i)=>`<div class="t"><span class="x" onclick="playD(${i})">▶ ${esc(f.name.slice(7))}</span><button class="g" onclick="dlD(${i})">⬇</button><button class="r" onclick="armDel(this,()=>delD(${i}))">🗑</button></div>`).join('')}</div>`;
 /* AUTH & DRIVE */
 const CLIENT_ID='1100350122-98pqs0375hnun47j3ifo8dbru5kc5o02.apps.googleusercontent.com'; // OWNER: paste your Google OAuth Client ID here once, then host the file. Everyone else just signs in.
-const SC='openid email profile https://www.googleapis.com/auth/drive.appdata';
+const SC='openid email profile https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/calendar.events';
 const cidv=()=>CLIENT_ID||localStorage.getItem('pa:cid')||'';
 const loadScript=u=>new Promise((ok,no)=>{const e=document.createElement('script');e.src=u;e.onload=ok;e.onerror=no;document.head.appendChild(e)});
 async function gtc(){if(tc)return tc;if(!(window.google&&google.accounts))await loadScript('https://accounts.google.com/gsi/client');tc=google.accounts.oauth2.initTokenClient({client_id:cidv(),scope:SC,callback:r=>r.error?tcNo(r):tcOk(r),error_callback:e=>tcNo(e)});return tc}
